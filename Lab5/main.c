@@ -14,6 +14,7 @@
 #include "lab1/leds.h"
 #include "lab5/timers.h"
 #include "lab5/switches.h"
+#include "lab5/adc12.h"
 
 /* Enable/Disable definitions for LED1 states */
 #define LED1_OFF     0
@@ -42,8 +43,9 @@ volatile bool g_sw2_timing_active = false;
 volatile uint32_t g_start_time_ms = 0;
 volatile int previous = 0;
 
-
-//PART 1 MAIN
+//****************************************************
+//******************PART 1****************************
+//****************************************************
 
 // int main(void) {
 //     __disable_irq();
@@ -135,11 +137,106 @@ volatile int previous = 0;
 
 
 
+//****************************************************
+//******************PART 2****************************
+//****************************************************
 
-//PART 2 MAIN
+
+
+
+// UART helper functions
+void UART0_putDecimal(uint32_t value)
+{
+    char buffer[10];
+    int i = 0;
+
+    // Special case for zero
+    if (value == 0)
+    {
+        UART0_putchar('0');
+        return;
+    }
+
+    // Convert number to decimal digits
+    while (value > 0)
+    {
+        buffer[i++] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    // Digits were generated backwards, so print them backwards
+    while (i > 0)
+    {
+        UART0_putchar(buffer[--i]);
+    }
+}
+
+
+// Print an unsigned integer in hexadecimal
+void UART0_putHex(uint32_t value)
+{
+    const char hex[] = "0123456789ABCDEF";
+
+    UART0_putchar('0');
+    UART0_putchar('x');
+
+    // Print 3 hex digits for a 12-bit ADC value
+    UART0_putchar(hex[(value >> 8) & 0xF]);
+    UART0_putchar(hex[(value >> 4) & 0xF]);
+    UART0_putchar(hex[value & 0xF]);
+}
+
+
+
+
+
+
+// TIMG6 interrupt handler
+void TIMG6_IRQHandler(void)
+{
+    uint32_t adcValue;
+
+    // Check if Zero Event interrupt occurred
+    if (TIMG6->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
+    {
+        // Clear Zero Event interrupt
+        TIMG6->CPU_INT.ICLR = GPTIMER_CPU_INT_ICLR_Z_CLR;
+
+        // Get ADC conversion
+        adcValue = ADC0_getVal();
+
+        // Print decimal value
+        UART0_put("ADC = ");
+        UART0_putDecimal(adcValue);
+
+        // Print hexadecimal value
+        UART0_put("  HEX = ");
+        UART0_putHex(adcValue);
+
+        // New line
+        UART0_put("\r\n");
+    }
+}
+
 
 int main(void)
 {
+    // Initialize UART0
+    UART0_init();
 
-    return 0;
+    // Initialize ADC0
+    ADC0_init();
+
+    // Initialize TIMG6 for 2 Hz
+    // BUSCLK = 32 MHz
+    // Prescaler = 0
+    // LOAD = 32,000,000 / 2 - 1
+    TIMG6_init(15999999, 0);
+
+    // Main loop
+    while (1)
+    {
+        // Wait for interrupt
+        __WFI();
+    }
 }
