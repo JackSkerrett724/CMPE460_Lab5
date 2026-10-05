@@ -139,12 +139,113 @@ volatile int previous = 0;
 
 //****************************************************
 //******************PART 2****************************
+//*****************PHOTOCELL**************************
+
+
+
+
+// // UART helper functions
+// void UART0_putDecimal(uint32_t value)
+// {
+//     char buffer[10];
+//     int i = 0;
+
+//     // Special case for zero
+//     if (value == 0)
+//     {
+//         UART0_putchar('0');
+//         return;
+//     }
+
+//     // Convert number to decimal digits
+//     while (value > 0)
+//     {
+//         buffer[i++] = '0' + (value % 10);
+//         value /= 10;
+//     }
+
+//     // Digits were generated backwards, so print them backwards
+//     while (i > 0)
+//     {
+//         UART0_putchar(buffer[--i]);
+//     }
+// }
+
+
+// // Print an unsigned integer in hexadecimal
+// void UART0_putHex(uint32_t value)
+// {
+//     const char hex[] = "0123456789ABCDEF";
+
+//     UART0_putchar('0');
+//     UART0_putchar('x');
+
+//     // Print 3 hex digits for a 12-bit ADC value
+//     UART0_putchar(hex[(value >> 8) & 0xF]);
+//     UART0_putchar(hex[(value >> 4) & 0xF]);
+//     UART0_putchar(hex[value & 0xF]);
+// }
+
+
+
+
+
+
+// // TIMG6 interrupt handler
+// void TIMG6_IRQHandler(void)
+// {
+//     uint32_t adcValue;
+
+//     // Check if Zero Event interrupt occurred
+//     if (TIMG6->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
+//     {
+//         // Clear Zero Event interrupt
+//         TIMG6->CPU_INT.ICLR = GPTIMER_CPU_INT_ICLR_Z_CLR;
+
+//         // Get ADC conversion
+//         adcValue = ADC0_getVal();
+
+//         // Print decimal value
+//         UART0_put("ADC = ");
+//         UART0_putDecimal(adcValue);
+
+//         // Print hexadecimal value
+//         UART0_put("  HEX = ");
+//         UART0_putHex(adcValue);
+
+//         // New line
+//         UART0_put("\r\n");
+//     }
+// }
+
+
+// int main(void)
+// {
+//     // Initialize UART0
+//     UART0_init();
+
+//     // Initialize ADC0
+//     ADC0_init();
+
+//     // Initialize TIMG6 for 2 Hz
+//     // BUSCLK = 32 MHz
+//     // Prescaler = 0
+//     // LOAD = 32,000,000 / 2 - 1
+//     TIMG6_init(15999999, 0);
+
+//     // Main loop
+//     while (1)
+//     {
+//         // Wait for interrupt
+//         __WFI();
+//     }
+// }
+
+
 //****************************************************
+//******************PART 2****************************
+//*******************TMP36****************************
 
-
-
-
-// UART helper functions
 void UART0_putDecimal(uint32_t value)
 {
     char buffer[10];
@@ -171,72 +272,81 @@ void UART0_putDecimal(uint32_t value)
     }
 }
 
-
-// Print an unsigned integer in hexadecimal
-void UART0_putHex(uint32_t value)
+void UART0_putFloat(float value)
 {
-    const char hex[] = "0123456789ABCDEF";
+    int32_t whole;
+    uint32_t fraction;
 
-    UART0_putchar('0');
-    UART0_putchar('x');
+    if (value < 0)
+    {
+        UART0_putchar('-');
+        value = -value;
+    }
 
-    // Print 3 hex digits for a 12-bit ADC value
-    UART0_putchar(hex[(value >> 8) & 0xF]);
-    UART0_putchar(hex[(value >> 4) & 0xF]);
-    UART0_putchar(hex[value & 0xF]);
+    whole = (int32_t)value;
+    fraction = (uint32_t)((value - whole) * 100.0f);
+
+    UART0_putDecimal(whole);
+    UART0_putchar('.');
+    
+    if (fraction < 10)
+    {
+        UART0_putchar('0');
+    }
+
+    UART0_putDecimal(fraction);
 }
 
 
 
-
-
-
-// TIMG6 interrupt handler
 void TIMG6_IRQHandler(void)
 {
     uint32_t adcValue;
+    float voltage;
+    float tempC;
+    float tempF;
 
-    // Check if Zero Event interrupt occurred
     if (TIMG6->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
     {
-        // Clear Zero Event interrupt
+        // Clear interrupt
         TIMG6->CPU_INT.ICLR = GPTIMER_CPU_INT_ICLR_Z_CLR;
 
-        // Get ADC conversion
+        // Get ADC reading
         adcValue = ADC0_getVal();
 
-        // Print decimal value
-        UART0_put("ADC = ");
-        UART0_putDecimal(adcValue);
+        // ADC -> voltage
+        voltage = ((float)adcValue * 3.3f) / 4095.0f;
 
-        // Print hexadecimal value
-        UART0_put("  HEX = ");
-        UART0_putHex(adcValue);
+        // Voltage -> Celsius
+        tempC = (voltage - 0.5f) / 0.01f;
 
-        // New line
-        UART0_put("\r\n");
+        // Celsius -> Fahrenheit
+        tempF = (tempC * 9.0f / 5.0f) + 32.0f;
+
+        // Output
+        UART0_put("Temperature: ");
+        UART0_putFloat(tempC);
+        UART0_put(" C / ");
+
+        UART0_putFloat(tempF);
+        UART0_put(" F\r\n");
     }
 }
 
 
 int main(void)
 {
-    // Initialize UART0
+    // Initialize UART
     UART0_init();
 
-    // Initialize ADC0
+    // Initialize ADC
     ADC0_init();
 
     // Initialize TIMG6 for 2 Hz
-    // BUSCLK = 32 MHz
-    // Prescaler = 0
-    // LOAD = 32,000,000 / 2 - 1
     TIMG6_init(15999999, 0);
 
-    // Main loop
     while (1)
     {
-        // Wait for interrupt
         __WFI();
     }
 }
