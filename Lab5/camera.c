@@ -7,7 +7,6 @@
 
 #include <stdint.h>
 #include <ti/devices/msp/msp.h>
-#include <ti/devices/msp/peripherals/hw_gptimer.h>
 
 #include "lab5/camera.h"
 #include "lab5/timers.h"
@@ -50,6 +49,13 @@ void Camera_init(void)
     GPIOA->DOUTCLR31_0 = CAMERA_SI_PIN | CAMERA_CLK_PIN;
 
 
+    IOMUX->SECCFG.PINCM[IOMUX_PINCM34] |=
+        (IOMUX_PINCM34_PF_GPIOA_DIO12 | IOMUX_PINCM_PC_CONNECTED);
+
+    IOMUX->SECCFG.PINCM[IOMUX_PINCM3] |=
+        (IOMUX_PINCM3_PF_GPIOA_DIO28 | IOMUX_PINCM_PC_CONNECTED);
+
+
     // Initialize ADC
     ADC0_init();
 
@@ -59,7 +65,7 @@ void Camera_init(void)
 
     // 32 MHz * 0.0075 s = 240000
     // LOAD = 240000 - 1 = 239999
-    TIMG6_init(239999, 0);
+    TIMG6_init(7499, 31);
 
 
     // Make sure TIMG0 is disabled
@@ -93,9 +99,10 @@ void TIMG6_IRQHandler(void)
              ~GPTIMER_CTRCTL_EN_MASK) |
             GPTIMER_CTRCTL_EN_DISABLED;
 
-        // Send SI pulse
-        GPIOA->DOUTSET31_0 = CAMERA_SI_PIN;
-        GPIOA->DOUTCLR31_0 = CAMERA_SI_PIN;
+        GPIOA->DOUTSET31_0 = CAMERA_SI_PIN;    // SI high
+        GPIOA->DOUTSET31_0 = CAMERA_CLK_PIN;   // CLK rises while SI is high
+        GPIOA->DOUTCLR31_0 = CAMERA_SI_PIN;    // SI low
+        GPIOA->DOUTCLR31_0 = CAMERA_CLK_PIN;   // CLK low
 
         // Reset pixel counter
         pixelCounter = 0;
@@ -118,38 +125,41 @@ void TIMG0_IRQHandler(void)
 {
     if (TIMG0->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
     {
-        // Clear the interrupt
+        // Clear interrupt
         TIMG0->CPU_INT.ICLR =
             GPTIMER_CPU_INT_ICLR_Z_CLR;
 
-        // Toggle camera clock
-        GPIOA->DOUTTGL31_0 = CAMERA_CLK_PIN;
-
-        // Read ADC value
         if (pixelCounter < 128)
         {
-            cameraData[pixelCounter] =
-                ADC0_getVal();
+            // CLK high
+            GPIOA->DOUTSET31_0 = CAMERA_CLK_PIN;
 
+            // Read pixel
+            cameraData[pixelCounter] = ADC0_getVal();
             pixelCounter++;
+
+            // CLK low
+            GPIOA->DOUTCLR31_0 = CAMERA_CLK_PIN;
         }
 
-        // Stop after 128 pixels
+        // CLK low
+        GPIOA->DOUTCLR31_0 = CAMERA_CLK_PIN;
+
+        // 128 pixels collected
         if (pixelCounter >= 128)
         {
             cameraData_complete = true;
 
-            // Stop camera clock
             TIMG0->COUNTERREGS.CTRCTL =
                 (TIMG0->COUNTERREGS.CTRCTL &
                  ~GPTIMER_CTRCTL_EN_MASK) |
                 GPTIMER_CTRCTL_EN_DISABLED;
 
-            // Reset pixel counter
             pixelCounter = 0;
         }
     }
 }
+
 
 
 // Check if camera data is ready

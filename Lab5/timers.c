@@ -14,10 +14,6 @@
 #include <ti/devices/msp/peripherals/hw_gptimer.h>
 #include "lab5/timers.h"
 
-/**
- * @brief Timer G0 module initialization. General purpose timer
- * @note Timer G0 is in Power Domain 0. Check page 3 of the Data Sheet
-*/
 void TIMG0_init(uint32_t period, uint32_t prescaler)
 {
     if (!(TIMG0->GPRCM.PWREN & GPTIMER_PWREN_ENABLE_MASK))
@@ -42,22 +38,17 @@ void TIMG0_init(uint32_t period, uint32_t prescaler)
     TIMG0->COMMONREGS.CPS |= prescaler;
 
     // Enable timer clock
-    TIMG0->COMMONREGS.CCLKCTL |=
-        GPTIMER_CCLKCTL_CLKEN_ENABLED;
+    TIMG0->COMMONREGS.CCLKCTL |= GPTIMER_CCLKCTL_CLKEN_ENABLED;
 
     // Disable timer
-    TIMG0->COUNTERREGS.CTRCTL =
-        GPTIMER_CTRCTL_EN_DISABLED;
+    TIMG0->COUNTERREGS.CTRCTL = GPTIMER_CTRCTL_EN_DISABLED;
 
     // Repeat mode
-    TIMG0->COUNTERREGS.CTRCTL &=
-        ~GPTIMER_CTRCTL_CM_MASK;
+    TIMG0->COUNTERREGS.CTRCTL &= ~GPTIMER_CTRCTL_CM_MASK;
 
-    TIMG0->COUNTERREGS.CTRCTL |=
-        GPTIMER_CTRCTL_REPEAT_REPEAT_1;
+    TIMG0->COUNTERREGS.CTRCTL |= GPTIMER_CTRCTL_REPEAT_REPEAT_1;
 
-    TIMG0->COUNTERREGS.CTRCTL &=
-        ~GPTIMER_CTRCTL_CVAE_MASK;
+    TIMG0->COUNTERREGS.CTRCTL &= ~GPTIMER_CTRCTL_CVAE_MASK;
 
     // Set timer period
     TIMG0->COUNTERREGS.LOAD = period;
@@ -65,12 +56,10 @@ void TIMG0_init(uint32_t period, uint32_t prescaler)
     __disable_irq();
 
     // Clear Zero event interrupt
-    TIMG0->CPU_INT.ICLR =
-        GPTIMER_CPU_INT_ICLR_Z_CLR;
+    TIMG0->CPU_INT.ICLR = GPTIMER_CPU_INT_ICLR_Z_CLR;
 
     // Enable Zero event interrupt
-    TIMG0->CPU_INT.IMASK |=
-        GPTIMER_CPU_INT_IMASK_Z_SET;
+    TIMG0->CPU_INT.IMASK |= GPTIMER_CPU_INT_IMASK_Z_SET;
 
     // Enable TIMG0 interrupt
     NVIC_EnableIRQ(TIMG0_INT_IRQn);
@@ -83,10 +72,6 @@ void TIMG0_init(uint32_t period, uint32_t prescaler)
 }
 
 
-
-/**
- * @brief Timer G6 module initialization. General purpose timer
-*/
 void TIMG6_init(uint32_t period, uint32_t prescaler){
 
 	if (!(TIMG6->GPRCM.PWREN & GPTIMER_PWREN_ENABLE_MASK)){
@@ -120,10 +105,6 @@ void TIMG6_init(uint32_t period, uint32_t prescaler){
 }
 
 
-/**
- * @brief Timer G12 module initialization. General purpose timer
- * @note Timer G12 has no prescaler
-*/
 void TIMG12_init(uint32_t period){
 	if (!(TIMG12->GPRCM.PWREN & GPTIMER_PWREN_ENABLE_MASK)) {
 	TIMG12->GPRCM.RSTCTL |= (GPTIMER_RSTCTL_KEY_UNLOCK_W | GPTIMER_RSTCTL_RESETASSERT_ASSERT | GPTIMER_RSTCTL_RESETSTKYCLR_CLR);
