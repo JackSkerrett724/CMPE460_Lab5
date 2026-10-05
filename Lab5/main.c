@@ -15,6 +15,7 @@
 #include "lab5/timers.h"
 #include "lab5/switches.h"
 #include "lab5/adc12.h"
+#include "lab5/camera.h"
 
 /* Enable/Disable definitions for LED1 states */
 #define LED1_OFF     0
@@ -246,6 +247,117 @@ volatile int previous = 0;
 //******************PART 2****************************
 //*******************TMP36****************************
 
+// void UART0_putDecimal(uint32_t value)
+// {
+//     char buffer[10];
+//     int i = 0;
+
+//     // Special case for zero
+//     if (value == 0)
+//     {
+//         UART0_putchar('0');
+//         return;
+//     }   
+
+//     // Convert number to decimal digits
+//     while (value > 0)
+//     {
+//         buffer[i++] = '0' + (value % 10);
+//         value /= 10;
+//     }
+
+//     // Digits were generated backwards, so print them backwards
+//     while (i > 0)
+//     {
+//         UART0_putchar(buffer[--i]);
+//     }
+// }
+
+// void UART0_putFloat(float value)
+// {
+//     int32_t whole;
+//     uint32_t fraction;
+
+//     if (value < 0)
+//     {
+//         UART0_putchar('-');
+//         value = -value;
+//     }
+
+//     whole = (int32_t)value;
+//     fraction = (uint32_t)((value - whole) * 100.0f);
+
+//     UART0_putDecimal(whole);
+//     UART0_putchar('.');
+    
+//     if (fraction < 10)
+//     {
+//         UART0_putchar('0');
+//     }
+
+//     UART0_putDecimal(fraction);
+// }
+
+
+
+// void TIMG6_IRQHandler(void)
+// {
+//     uint32_t adcValue;
+//     float voltage;
+//     float tempC;
+//     float tempF;
+
+//     if (TIMG6->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
+//     {
+//         // Clear interrupt
+//         TIMG6->CPU_INT.ICLR = GPTIMER_CPU_INT_ICLR_Z_CLR;
+
+//         // Get ADC reading
+//         adcValue = ADC0_getVal();
+
+//         // ADC -> voltage
+//         voltage = ((float)adcValue * 3.3f) / 4095.0f;
+
+//         // Voltage -> Celsius
+//         tempC = (voltage - 0.5f) / 0.01f;
+
+//         // Celsius -> Fahrenheit
+//         tempF = (tempC * 9.0f / 5.0f) + 32.0f;
+
+//         // Output
+//         UART0_put("Temperature: ");
+//         UART0_putFloat(tempC);
+//         UART0_put(" C / ");
+
+//         UART0_putFloat(tempF);
+//         UART0_put(" F\r\n");
+//     }
+// }
+
+
+// int main(void)
+// {
+//     // Initialize UART
+//     UART0_init();
+
+//     // Initialize ADC
+//     ADC0_init();
+
+//     // Initialize TIMG6 for 2 Hz
+//     TIMG6_init(15999999, 0);
+
+//     while (1)
+//     {
+//         __WFI();
+//     }
+// }
+
+
+
+//****************************************************
+//******************PART 3****************************
+//****************************************************
+
 void UART0_putDecimal(uint32_t value)
 {
     char buffer[10];
@@ -256,7 +368,7 @@ void UART0_putDecimal(uint32_t value)
     {
         UART0_putchar('0');
         return;
-    }
+    }   
 
     // Convert number to decimal digits
     while (value > 0)
@@ -272,81 +384,35 @@ void UART0_putDecimal(uint32_t value)
     }
 }
 
-void UART0_putFloat(float value)
-{
-    int32_t whole;
-    uint32_t fraction;
-
-    if (value < 0)
-    {
-        UART0_putchar('-');
-        value = -value;
-    }
-
-    whole = (int32_t)value;
-    fraction = (uint32_t)((value - whole) * 100.0f);
-
-    UART0_putDecimal(whole);
-    UART0_putchar('.');
-    
-    if (fraction < 10)
-    {
-        UART0_putchar('0');
-    }
-
-    UART0_putDecimal(fraction);
-}
-
-
-
-void TIMG6_IRQHandler(void)
-{
-    uint32_t adcValue;
-    float voltage;
-    float tempC;
-    float tempF;
-
-    if (TIMG6->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
-    {
-        // Clear interrupt
-        TIMG6->CPU_INT.ICLR = GPTIMER_CPU_INT_ICLR_Z_CLR;
-
-        // Get ADC reading
-        adcValue = ADC0_getVal();
-
-        // ADC -> voltage
-        voltage = ((float)adcValue * 3.3f) / 4095.0f;
-
-        // Voltage -> Celsius
-        tempC = (voltage - 0.5f) / 0.01f;
-
-        // Celsius -> Fahrenheit
-        tempF = (tempC * 9.0f / 5.0f) + 32.0f;
-
-        // Output
-        UART0_put("Temperature: ");
-        UART0_putFloat(tempC);
-        UART0_put(" C / ");
-
-        UART0_putFloat(tempF);
-        UART0_put(" F\r\n");
-    }
-}
-
-
 int main(void)
 {
-    // Initialize UART
+    uint16_t *cameraData;
+
+    // Initialize UART0
     UART0_init();
 
-    // Initialize ADC
-    ADC0_init();
-
-    // Initialize TIMG6 for 2 Hz
-    TIMG6_init(15999999, 0);
+    // Initialize line scan camera
+    Camera_init();
 
     while (1)
     {
-        __WFI();
+        if (Camera_isDataReady())
+        {
+            // Get the camera values
+            cameraData = Camera_getData();
+
+            // Start value
+            UART0_put("-1\r\n");
+
+            // Send all 128 camera values
+            for (uint32_t i = 0; i < 128; i++)
+            {
+                UART0_putDecimal(cameraData[i]);
+                UART0_put("\r\n");
+            }
+
+            // Stop value
+            UART0_put("-2\r\n");
+        }
     }
 }

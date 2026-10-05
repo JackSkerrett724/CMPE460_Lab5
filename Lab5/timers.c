@@ -18,9 +18,70 @@
  * @brief Timer G0 module initialization. General purpose timer
  * @note Timer G0 is in Power Domain 0. Check page 3 of the Data Sheet
 */
-void TIMG0_init(uint32_t period, uint32_t prescaler){
+void TIMG0_init(uint32_t period, uint32_t prescaler)
+{
+    if (!(TIMG0->GPRCM.PWREN & GPTIMER_PWREN_ENABLE_MASK))
+    {
+        // Peripheral reset control
+        TIMG0->GPRCM.RSTCTL |=
+            (GPTIMER_RSTCTL_KEY_UNLOCK_W |
+             GPTIMER_RSTCTL_RESETASSERT_ASSERT);
 
+        TIMG0->GPRCM.PWREN |=
+            (GPTIMER_PWREN_KEY_UNLOCK_W |
+             GPTIMER_PWREN_ENABLE_ENABLE);
+    }
+
+    // Select BUSCLK
+    TIMG0->CLKSEL |= GPTIMER_CLKSEL_BUSCLK_SEL_ENABLE;
+
+    // Clock divider = 1
+    TIMG0->CLKDIV |= GPTIMER_CLKDIV_RATIO_DIV_BY_1;
+
+    // Prescaler
+    TIMG0->COMMONREGS.CPS |= prescaler;
+
+    // Enable timer clock
+    TIMG0->COMMONREGS.CCLKCTL |=
+        GPTIMER_CCLKCTL_CLKEN_ENABLED;
+
+    // Disable timer
+    TIMG0->COUNTERREGS.CTRCTL =
+        GPTIMER_CTRCTL_EN_DISABLED;
+
+    // Repeat mode
+    TIMG0->COUNTERREGS.CTRCTL &=
+        ~GPTIMER_CTRCTL_CM_MASK;
+
+    TIMG0->COUNTERREGS.CTRCTL |=
+        GPTIMER_CTRCTL_REPEAT_REPEAT_1;
+
+    TIMG0->COUNTERREGS.CTRCTL &=
+        ~GPTIMER_CTRCTL_CVAE_MASK;
+
+    // Set timer period
+    TIMG0->COUNTERREGS.LOAD = period;
+
+    __disable_irq();
+
+    // Clear Zero event interrupt
+    TIMG0->CPU_INT.ICLR =
+        GPTIMER_CPU_INT_ICLR_Z_CLR;
+
+    // Enable Zero event interrupt
+    TIMG0->CPU_INT.IMASK |=
+        GPTIMER_CPU_INT_IMASK_Z_SET;
+
+    // Enable TIMG0 interrupt
+    NVIC_EnableIRQ(TIMG0_INT_IRQn);
+
+    __enable_irq();
+
+    // IMPORTANT:
+    // Leave TIMG0 disabled.
+    // Camera.c will enable it when a capture begins.
 }
+
 
 
 /**
