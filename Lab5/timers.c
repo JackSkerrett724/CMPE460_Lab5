@@ -10,6 +10,7 @@
 */
 
 #include <stdint.h>
+#include <sysctl.h>
 #include <ti/devices/msp/msp.h>
 #include <ti/devices/msp/peripherals/hw_gptimer.h>
 #include "lab5/timers.h"
@@ -21,7 +22,8 @@ void TIMG0_init(uint32_t period, uint32_t prescaler)
         // Peripheral reset control
         TIMG0->GPRCM.RSTCTL |=
             (GPTIMER_RSTCTL_KEY_UNLOCK_W |
-             GPTIMER_RSTCTL_RESETASSERT_ASSERT);
+             GPTIMER_RSTCTL_RESETASSERT_ASSERT |
+             GPTIMER_RSTCTL_RESETSTKYCLR_CLR);
 
         TIMG0->GPRCM.PWREN |=
             (GPTIMER_PWREN_KEY_UNLOCK_W |
@@ -38,7 +40,7 @@ void TIMG0_init(uint32_t period, uint32_t prescaler)
     TIMG0->COMMONREGS.CPS |= prescaler;
 
     // Enable timer clock
-    TIMG0->COMMONREGS.CCLKCTL |= GPTIMER_CCLKCTL_CLKEN_ENABLED;
+  //  TIMG0->COMMONREGS.CCLKCTL |= GPTIMER_CCLKCTL_CLKEN_ENABLED;
 
     // Disable timer
     TIMG0->COUNTERREGS.CTRCTL = GPTIMER_CTRCTL_EN_DISABLED;
@@ -51,7 +53,9 @@ void TIMG0_init(uint32_t period, uint32_t prescaler)
     TIMG0->COUNTERREGS.CTRCTL &= ~GPTIMER_CTRCTL_CVAE_MASK;
 
     // Set timer period
-    TIMG0->COUNTERREGS.LOAD = period;
+    uint32_t clk = SYSCTL_SYSCLK_getMCLK();
+    uint32_t load = period*(clk/(1000000*(prescaler+1))*(TIMG0->CLKDIV+1));
+    TIMG0->COUNTERREGS.LOAD = load;
 
     __disable_irq();
 
@@ -61,14 +65,14 @@ void TIMG0_init(uint32_t period, uint32_t prescaler)
     // Enable Zero event interrupt
     TIMG0->CPU_INT.IMASK |= GPTIMER_CPU_INT_IMASK_Z_SET;
 
+    TIMG0->COMMONREGS.CCLKCTL |= GPTIMER_CCLKCTL_CLKEN_ENABLED;
+
+
     // Enable TIMG0 interrupt
     NVIC_EnableIRQ(TIMG0_INT_IRQn);
 
     __enable_irq();
 
-    // IMPORTANT:
-    // Leave TIMG0 disabled.
-    // Camera.c will enable it when a capture begins.
 }
 
 
@@ -76,14 +80,14 @@ void TIMG6_init(uint32_t period, uint32_t prescaler){
 
 	if (!(TIMG6->GPRCM.PWREN & GPTIMER_PWREN_ENABLE_MASK)){
 		//Peripheral reset control
-	TIMG6->GPRCM.RSTCTL |= (GPTIMER_RSTCTL_KEY_UNLOCK_W | GPTIMER_RSTCTL_RESETASSERT_ASSERT);
+	TIMG6->GPRCM.RSTCTL |= (GPTIMER_RSTCTL_KEY_UNLOCK_W | GPTIMER_RSTCTL_RESETASSERT_ASSERT | GPTIMER_RSTCTL_RESETSTKYCLR_CLR);
   TIMG6->GPRCM.PWREN  |= (GPTIMER_PWREN_KEY_UNLOCK_W  | GPTIMER_PWREN_ENABLE_ENABLE);
 	}
 	
 	TIMG6->CLKSEL |= GPTIMER_CLKSEL_BUSCLK_SEL_ENABLE;
 	TIMG6->CLKDIV |= GPTIMER_CLKDIV_RATIO_DIV_BY_1; 
 	TIMG6->COMMONREGS.CPS |= prescaler;
-	TIMG6->COMMONREGS.CCLKCTL |= GPTIMER_CCLKCTL_CLKEN_ENABLED; 
+	//TIMG6->COMMONREGS.CCLKCTL |= GPTIMER_CCLKCTL_CLKEN_ENABLED; 
 	TIMG6->COUNTERREGS.CTRCTL = GPTIMER_CTRCTL_EN_DISABLED;
 	
 	TIMG6->COUNTERREGS.CTRCTL &= ~GPTIMER_CTRCTL_CM_MASK;
@@ -92,11 +96,15 @@ void TIMG6_init(uint32_t period, uint32_t prescaler){
 
 	
 	//uint64_t load = (((32000000*period)/((prescaler+1)*(1000000)))-1);
-	TIMG6->COUNTERREGS.LOAD = period;
+  uint32_t clk = SYSCTL_SYSCLK_getMCLK();
+  uint32_t load = period*(clk/(1000*(prescaler+1))*(TIMG6->CLKDIV+1));
+	TIMG6->COUNTERREGS.LOAD = load;
 	
 		__disable_irq();
+  
 	TIMG6->CPU_INT.ICLR |= GPTIMER_CPU_INT_ICLR_Z_CLR;
 	TIMG6->CPU_INT.IMASK |= GPTIMER_CPU_INT_IMASK_Z_SET;
+  TIMG6->COMMONREGS.CCLKCTL |= GPTIMER_CCLKCTL_CLKEN_ENABLED;
 	TIMG6 ->COUNTERREGS.CTRCTL |= GPTIMER_CTRCTL_EN_ENABLED;
 	//NVIC_ClearPendingIRQ(TIMG6_INT_IRQn);
 	NVIC_EnableIRQ(TIMG6_INT_IRQn);

@@ -15,8 +15,8 @@
 // Camera pins
 // SI  = PA28
 // CLK = PA12
-#define CAMERA_SI_PIN       (1U << 28)
-#define CAMERA_CLK_PIN      (1U << 12)
+#define CAMERA_SI_PIN       GPIO_DOESET31_0_DIO28_SET
+#define CAMERA_CLK_PIN      GPIO_DOESET31_0_DIO12_SET
 
 // Camera data
 static uint16_t cameraData[128];
@@ -42,12 +42,6 @@ void Camera_init(void)
              GPIO_PWREN_ENABLE_ENABLE);
     }
 
-    // Configure SI (PA28) and CLK (PA12) as outputs
-    GPIOA->DOESET31_0 = CAMERA_SI_PIN | CAMERA_CLK_PIN;
-
-    // Start SI and CLK low
-    GPIOA->DOUTCLR31_0 = CAMERA_SI_PIN | CAMERA_CLK_PIN;
-
 
     IOMUX->SECCFG.PINCM[IOMUX_PINCM34] |=
         (IOMUX_PINCM34_PF_GPIOA_DIO12 | IOMUX_PINCM_PC_CONNECTED);
@@ -56,23 +50,25 @@ void Camera_init(void)
         (IOMUX_PINCM3_PF_GPIOA_DIO28 | IOMUX_PINCM_PC_CONNECTED);
 
 
+    // Configure SI (PA28) and CLK (PA12) as outputs
+    GPIOA->DOESET31_0 |= (GPIO_DOESET31_0_DIO28_SET | GPIO_DOESET31_0_DIO12_SET);
+
+    // Start SI and CLK low
+   // GPIOA->DOUTCLR31_0 |= (CAMERA_SI_PIN | CAMERA_CLK_PIN);
+
+
     // Initialize ADC
     ADC0_init();
+   
+    //input in microseconds
+    TIMG0_init(10, 0);
 
-    // 32 MHz / 100 kHz = 320
-    // LOAD = 320 - 1 = 319
-    TIMG0_init(319, 0);
-
-    // 32 MHz * 0.0075 s = 240000
-    // LOAD = 240000 - 1 = 239999
-    TIMG6_init(7499, 31);
+    //input in milliseconds
+    TIMG6_init(8, 255);
 
 
     // Make sure TIMG0 is disabled
-    TIMG0->COUNTERREGS.CTRCTL =
-        (TIMG0->COUNTERREGS.CTRCTL &
-         ~GPTIMER_CTRCTL_EN_MASK) |
-        GPTIMER_CTRCTL_EN_DISABLED;
+    TIMG0->COUNTERREGS.CTRCTL &= ~GPTIMER_CTRCTL_EN_ENABLED;
 }
 
 
@@ -81,41 +77,25 @@ void Camera_init(void)
 // Starts a new camera reading
 void TIMG6_IRQHandler(void)
 {
-    if (TIMG6->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
-    {
-        // Clear the interrupt
-        TIMG6->CPU_INT.ICLR =
-            GPTIMER_CPU_INT_ICLR_Z_CLR;
 
-        // Do not start if old data has not been read
-        if (cameraData_complete)
-        {
-            return;
-        }
 
-        // Turn off the camera clock
-        TIMG0->COUNTERREGS.CTRCTL =
-            (TIMG0->COUNTERREGS.CTRCTL &
-             ~GPTIMER_CTRCTL_EN_MASK) |
-            GPTIMER_CTRCTL_EN_DISABLED;
+    // Do not start if old data has not been read
+    cameraData_complete = 0;
 
-        GPIOA->DOUTSET31_0 = CAMERA_SI_PIN;    // SI high
-        GPIOA->DOUTSET31_0 = CAMERA_CLK_PIN;   // CLK rises while SI is high
-        GPIOA->DOUTCLR31_0 = CAMERA_SI_PIN;    // SI low
-        GPIOA->DOUTCLR31_0 = CAMERA_CLK_PIN;   // CLK low
+    // Turn off the camera clock
+    TIMG0->COUNTERREGS.CTRCTL &= ~GPTIMER_CTRCTL_EN_ENABLED;
 
-        // Reset pixel counter
-        pixelCounter = 0;
 
-        // Start camera clock
-        TIMG0->CPU_INT.ICLR =
-            GPTIMER_CPU_INT_ICLR_Z_CLR;
 
-        TIMG0->COUNTERREGS.CTRCTL =
-            (TIMG0->COUNTERREGS.CTRCTL &
-             ~GPTIMER_CTRCTL_EN_MASK) |
-            GPTIMER_CTRCTL_EN_ENABLED;
-    }
+    GPIOA->DOUTSET31_0 |= GPIO_DOESET31_0_DIO28_SET;    // SI high
+    GPIOA->DOUTSET31_0 |= GPIO_DOESET31_0_DIO12_SET;   // CLK high while SI is high
+    GPIOA->DOUTCLR31_0 |= GPIO_DOUTCLR31_0_DIO28_CLR;    // SI low
+    GPIOA->DOUTCLR31_0 |= GPIO_DOUTCLR31_0_DIO12_CLR;   // CLK low
+    //
+
+    //starts the timer
+    TIMG0->COUNTERREGS.CTRCTL |= GPTIMER_CTRCTL_EN_ENABLED;
+    
 }
 
 
@@ -123,40 +103,30 @@ void TIMG6_IRQHandler(void)
 // Generates CLK and reads the ADC
 void TIMG0_IRQHandler(void)
 {
-    if (TIMG0->CPU_INT.MIS & GPTIMER_CPU_INT_MIS_Z_MASK)
-    {
-        // Clear interrupt
-        TIMG0->CPU_INT.ICLR =
-            GPTIMER_CPU_INT_ICLR_Z_CLR;
 
-        if (pixelCounter < 128)
-        {
-            // CLK high
-            GPIOA->DOUTSET31_0 = CAMERA_CLK_PIN;
 
-            // Read pixel
-            cameraData[pixelCounter] = ADC0_getVal();
-            pixelCounter++;
-
-            // CLK low
-            GPIOA->DOUTCLR31_0 = CAMERA_CLK_PIN;
-        }
+        // CLK high
+        GPIOA->DOUTSET31_0 |= GPIO_DOESET31_0_DIO12_SET;
 
         // CLK low
-        GPIOA->DOUTCLR31_0 = CAMERA_CLK_PIN;
+        GPIOA->DOUTCLR31_0 |= GPIO_DOUTCLR31_0_DIO12_CLR;
 
-        // 128 pixels collected
-        if (pixelCounter >= 128)
-        {
-            cameraData_complete = true;
+        // Read pixel
+        cameraData[pixelCounter] = ADC0_getVal();
+        pixelCounter++;
 
-            TIMG0->COUNTERREGS.CTRCTL =
-                (TIMG0->COUNTERREGS.CTRCTL &
-                 ~GPTIMER_CTRCTL_EN_MASK) |
-                GPTIMER_CTRCTL_EN_DISABLED;
 
-            pixelCounter = 0;
-        }
+    
+
+
+    // 128 pixels collected
+    if (pixelCounter >= 128)
+    {
+        cameraData_complete = 1;
+
+        TIMG0->COUNTERREGS.CTRCTL &= ~GPTIMER_CTRCTL_EN_ENABLED;
+
+        pixelCounter = 0;
     }
 }
 
@@ -165,14 +135,22 @@ void TIMG0_IRQHandler(void)
 // Check if camera data is ready
 uint8_t Camera_isDataReady(void)
 {
-    return cameraData_complete;
+    if(cameraData_complete)
+    {
+        cameraData_complete = 0; // dont use boolean use int 1 or 0
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
 }
 
 
 // Get the camera data
 uint16_t* Camera_getData(void)
 {
-    cameraData_complete = false;
+    //cameraData_complete = false;
 
     return cameraData;
 }
